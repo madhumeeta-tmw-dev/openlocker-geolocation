@@ -1,8 +1,10 @@
+// src/components/LockerControl.js
+
 import React, { useState } from 'react';
-import axios from 'axios';
+import { openLocker } from '../services/LockerService';
 import './LockerControl.css';
 
-// Helper: Haversine formula for meters
+// Helper: Haversine formula to calculate distance in meters
 function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
   const R = 6371e3; // Earth radius in meters
   const toRad = (deg) => deg * (Math.PI / 180);
@@ -16,15 +18,17 @@ function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Your kiosk location (static)
+// Static kiosk location
 const kioskLat = 19.25164;
-const kioskLon = 72.86574; 
+const kioskLon = 72.86574;
 
 function LockerControl() {
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [distance, setDistance] = useState(null);
+  const [userLat, setUserLat] = useState(null);
+  const [userLon, setUserLon] = useState(null);
 
   const handleOpen = async (id) => {
     setError('');
@@ -32,44 +36,45 @@ function LockerControl() {
     setLoading(id);
 
     if (!navigator.geolocation) {
-      setError('❌ Geolocation not supported by your browser.');
+      setError('❌ Geolocation is not supported by your browser.');
       setLoading(null);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const userLat = position.coords.latitude;
-        const userLon = position.coords.longitude;
-        const dist = getDistanceFromLatLonInMeters(userLat, userLon, kioskLat, kioskLon);
+        const currentLat = position.coords.latitude;
+        const currentLon = position.coords.longitude;
+        setUserLat(currentLat);
+        setUserLon(currentLon);
+
+        const dist = getDistanceFromLatLonInMeters(currentLat, currentLon, kioskLat, kioskLon);
         setDistance(dist.toFixed(2));
 
-        if (dist <= 2) {
+        if (dist <= 5) {
           try {
-            // Replace with your actual API endpoint
-            const response = await axios.post('/api/open-locker', {
-              lockerNumber: id,
-              otp: 'abc123' // You can replace or remove OTP if not needed
-            });
-
-            if (response.data.status === 'opened') {
-              setStatus(`✅ Locker ${id} opened successfully.`);
-            } else {
-              setStatus(`❌ Locker ${id} failed to open: ${response.data.status}`);
-            }
+            console.log("sending api")
+            await openLocker(id); // Using service function
+            setStatus(`✅ Locker ${id} opened successfully.`);
           } catch (err) {
             console.error(err);
-            setError(`❌ Error while opening locker ${id}.`);
+            setError(`❌ Failed to open locker ${id}: ${err.message}`);
           }
         } else {
           setStatus(`📍 You are ${dist.toFixed(2)} meters away. Must be within 5 meters.`);
         }
+
         setLoading(null);
       },
       (err) => {
         console.error(err);
         setError('❌ Location access denied or error.');
         setLoading(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
       }
     );
   };
@@ -77,6 +82,14 @@ function LockerControl() {
   return (
     <div className="locker-control-container">
       <h1 className="title">Smart Locker Control</h1>
+      <div className="location-info">
+        <p><strong>Kiosk Location:</strong> Latitude: {kioskLat}, Longitude: {kioskLon}</p>
+        {userLat && userLon ? (
+          <p><strong>Your Location:</strong> Latitude: {userLat.toFixed(6)}, Longitude: {userLon.toFixed(6)}</p>
+        ) : (
+          <p>📍 Click a locker button to fetch your location.</p>
+        )}
+      </div>
       {error && <div className="error">{error}</div>}
       {status && <div className="status">{status}</div>}
       {distance && <div className="distance">📏 Distance: {distance} meters</div>}
